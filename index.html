@@ -11,6 +11,10 @@
         input, button, select { margin: 5px 0; padding: 5px; }
         .flex { display: flex; gap: 30px; }
         .receipt { background: #f4f4f4; padding: 15px; margin-top: 20px; width: 400px;}
+        .saved-receipts { margin-top: 20px; }
+        .share-section { margin-top: 10px; }
+        .share-link, .share-copy { margin-right: 10px; }
+        .receipt-actions button { margin-right: 5px; }
     </style>
 </head>
 <body>
@@ -79,12 +83,28 @@
     <button onclick="printReceipt()">Print Receipt</button>
 
     <div class="receipt" id="receipt" style="display:none"></div>
+    <div class="receipt-actions" id="receiptActions" style="display:none">
+        <button onclick="saveReceipt()">Save Receipt</button>
+        <button onclick="shareReceiptLink()">Share Receipt Link</button>
+        <button onclick="copyReceiptText()">Copy Receipt Text</button>
+    </div>
+    <div class="share-section" id="shareSection" style="display:none">
+        <input type="text" id="shareLink" class="share-link" readonly style="width: 90%">
+        <button onclick="copyToClipboard()">Copy Link</button>
+    </div>
+
+    <div class="saved-receipts">
+        <h3>Past Receipts</h3>
+        <ul id="pastReceipts"></ul>
+    </div>
 
     <script>
         // Inventory data
         let inventory = [];
         // Sales cart
         let cart = [];
+        // Last receipt object for sharing/saving
+        let lastReceipt = null;
 
         // Add stock
         document.getElementById('addItemForm').onsubmit = function(e) {
@@ -205,21 +225,35 @@
         function printReceipt() {
             if(cart.length === 0) return alert('No items in cart!');
             let now = new Date();
+            let receiptObj = {
+                date: now.toLocaleDateString(),
+                time: now.toLocaleTimeString(),
+                items: JSON.parse(JSON.stringify(cart)),
+                grandTotal: cart.reduce((sum, item) => sum + item.subtotal, 0)
+            };
             let receipt = `<h4>Supermarket Receipt</h4>
-                <div>Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</div>
+                <div>Date: ${receiptObj.date} ${receiptObj.time}</div>
                 <table style="width:100%;margin:10px 0;">
                     <tr><th>Item</th><th>Rate</th><th>Qty</th><th>Subtotal</th></tr>`;
-            let grandTotal = 0;
-            cart.forEach(item => {
+            receiptObj.items.forEach(item => {
                 receipt += `<tr>
                     <td>${item.name}</td>
                     <td>₦${item.rate.toFixed(2)}</td>
                     <td>${item.qty}</td>
                     <td>₦${item.subtotal.toFixed(2)}</td>
                 </tr>`;
-                grandTotal += item.subtotal;
+            });
+            receipt += `</table>
+                <div><strong>Grand Total: ₦${receiptObj.grandTotal.toFixed(2)}</strong></div>
+                <div>Thank you for shopping!</div>`;
+            document.getElementById('receipt').innerHTML = receipt;
+            document.getElementById('receipt').style.display = 'block';
+            document.getElementById('receiptActions').style.display = 'block';
+            document.getElementById('shareSection').style.display = 'none';
+            lastReceipt = receiptObj;
 
-                // Deduct sold quantity from inventory
+            // Deduct sold quantity from inventory
+            cart.forEach(item => {
                 let invItem = inventory.find(i => i.name === item.name);
                 let qtyToDeduct = item.qty;
                 for(let entry of invItem.entries) {
@@ -233,19 +267,137 @@
                     }
                 }
             });
-            receipt += `</table>
-                <div><strong>Grand Total: ₦${grandTotal.toFixed(2)}</strong></div>
-                <div>Thank you for shopping!</div>`;
-            document.getElementById('receipt').innerHTML = receipt;
-            document.getElementById('receipt').style.display = 'block';
-            // Clear cart
             cart = [];
             updateCartTable();
             updateStockTables();
         }
 
+        // Save Receipt to localStorage
+        function saveReceipt() {
+            if (!lastReceipt) return;
+            let receipts = JSON.parse(localStorage.getItem('supermarketReceipts') || "[]");
+            let id = Date.now();
+            receipts.push({id, ...lastReceipt});
+            localStorage.setItem('supermarketReceipts', JSON.stringify(receipts));
+            alert('Receipt saved!');
+            renderPastReceipts();
+        }
+
+        // Render list of saved receipts
+        function renderPastReceipts() {
+            let receipts = JSON.parse(localStorage.getItem('supermarketReceipts') || "[]");
+            let ul = document.getElementById('pastReceipts');
+            ul.innerHTML = '';
+            receipts.forEach(r => {
+                let li = document.createElement('li');
+                li.innerHTML = `Receipt: ${r.date} ${r.time} | Total: ₦${r.grandTotal.toFixed(2)}
+                    <button onclick='loadReceipt(${r.id})'>View</button>
+                    <button onclick='deleteReceipt(${r.id})'>Delete</button>`;
+                ul.appendChild(li);
+            });
+        }
+
+        // Load and show a saved receipt
+        function loadReceipt(id) {
+            let receipts = JSON.parse(localStorage.getItem('supermarketReceipts') || "[]");
+            let receiptObj = receipts.find(r => r.id === id);
+            if (!receiptObj) return;
+            lastReceipt = receiptObj;
+            let receipt = `<h4>Supermarket Receipt</h4>
+                <div>Date: ${receiptObj.date} ${receiptObj.time}</div>
+                <table style="width:100%;margin:10px 0;">
+                    <tr><th>Item</th><th>Rate</th><th>Qty</th><th>Subtotal</th></tr>`;
+            receiptObj.items.forEach(item => {
+                receipt += `<tr>
+                    <td>${item.name}</td>
+                    <td>₦${item.rate.toFixed(2)}</td>
+                    <td>${item.qty}</td>
+                    <td>₦${item.subtotal.toFixed(2)}</td>
+                </tr>`;
+            });
+            receipt += `</table>
+                <div><strong>Grand Total: ₦${receiptObj.grandTotal.toFixed(2)}</strong></div>
+                <div>Thank you for shopping!</div>`;
+            document.getElementById('receipt').innerHTML = receipt;
+            document.getElementById('receipt').style.display = 'block';
+            document.getElementById('receiptActions').style.display = 'block';
+            document.getElementById('shareSection').style.display = 'none';
+        }
+
+        // Delete a saved receipt
+        function deleteReceipt(id) {
+            if (!confirm("Delete this receipt?")) return;
+            let receipts = JSON.parse(localStorage.getItem('supermarketReceipts') || "[]");
+            receipts = receipts.filter(r => r.id !== id);
+            localStorage.setItem('supermarketReceipts', JSON.stringify(receipts));
+            renderPastReceipts();
+        }
+
+        // Share Receipt as link
+        function shareReceiptLink() {
+            if (!lastReceipt) return;
+            // Encode receipt JSON as base64 for sharing
+            let data = encodeURIComponent(JSON.stringify(lastReceipt));
+            let url = `${location.origin}${location.pathname}?receipt=${data}`;
+            document.getElementById('shareLink').value = url;
+            document.getElementById('shareSection').style.display = 'block';
+        }
+
+        // Copy Receipt as text
+        function copyReceiptText() {
+            let receiptDiv = document.getElementById('receipt');
+            let temp = document.createElement('textarea');
+            temp.value = receiptDiv.innerText;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            alert('Receipt text copied to clipboard!');
+        }
+
+        // Copy share link
+        function copyToClipboard() {
+            let link = document.getElementById('shareLink');
+            link.select();
+            document.execCommand('copy');
+            alert('Shareable link copied!');
+        }
+
+        // Load receipt from URL if present
+        function checkReceiptUrl() {
+            let params = new URLSearchParams(window.location.search);
+            if (params.has('receipt')) {
+                try {
+                    let receiptObj = JSON.parse(decodeURIComponent(params.get('receipt')));
+                    lastReceipt = receiptObj;
+                    let receipt = `<h4>Supermarket Receipt (Shared)</h4>
+                        <div>Date: ${receiptObj.date} ${receiptObj.time}</div>
+                        <table style="width:100%;margin:10px 0;">
+                            <tr><th>Item</th><th>Rate</th><th>Qty</th><th>Subtotal</th></tr>`;
+                    receiptObj.items.forEach(item => {
+                        receipt += `<tr>
+                            <td>${item.name}</td>
+                            <td>₦${item.rate.toFixed(2)}</td>
+                            <td>${item.qty}</td>
+                            <td>₦${item.subtotal.toFixed(2)}</td>
+                        </tr>`;
+                    });
+                    receipt += `</table>
+                        <div><strong>Grand Total: ₦${receiptObj.grandTotal.toFixed(2)}</strong></div>
+                        <div>Thank you for shopping!</div>`;
+                    document.getElementById('receipt').innerHTML = receipt;
+                    document.getElementById('receipt').style.display = 'block';
+                    document.getElementById('receiptActions').style.display = 'block';
+                } catch (e) {
+                    // Ignore if error
+                }
+            }
+        }
+
         // Initial call
         updateStockTables();
+        renderPastReceipts();
+        checkReceiptUrl();
     </script>
 </body>
 </html>
