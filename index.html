@@ -137,5 +137,115 @@
             tbody.innerHTML = '';
             let itemOutSelect = document.getElementById('itemOutName');
             let saleItemSelect = document.getElementById('saleItem');
-            itemOutSelect.innerHTML =
+            itemOutSelect.innerHTML = '';
+            saleItemSelect.innerHTML = '';
 
+            for(let item of inventory) {
+                itemOutSelect.innerHTML += `<option value="${item.name}">${item.name}</option>`;
+                saleItemSelect.innerHTML += `<option value="${item.name}">${item.name}</option>`;
+                for(let entry of item.entries) {
+                    let balance = entry.qtyIn - entry.qtyOut;
+                    let row = `<tr>
+                        <td>${item.name}</td>
+                        <td>${entry.dateIn}</td>
+                        <td>${entry.priceIn.toFixed(2)}</td>
+                        <td>${entry.qtyIn}</td>
+                        <td>${entry.qtyOut}</td>
+                        <td>${balance}</td>
+                    </tr>`;
+                    tbody.innerHTML += row;
+                }
+            }
+        }
+
+        // Add item to sale cart
+        function addSaleItem() {
+            let name = document.getElementById('saleItem').value;
+            let rate = parseFloat(document.getElementById('saleRate').value);
+            let qty = parseInt(document.getElementById('saleQty').value);
+
+            // Check stock
+            let item = inventory.find(i => i.name === name);
+            let totalAvailable = item ? item.entries.reduce((s, e) => s + (e.qtyIn - e.qtyOut), 0) : 0;
+            if(qty > totalAvailable) {
+                alert('Not enough stock available!');
+                return;
+            }
+
+            // Add to cart
+            cart.push({name, rate, qty, subtotal: rate * qty});
+            updateCartTable();
+        }
+
+        // Remove item from cart
+        function removeCartItem(idx) {
+            cart.splice(idx, 1);
+            updateCartTable();
+        }
+
+        // Update cart table and grand total
+        function updateCartTable() {
+            let tbody = document.querySelector('#cartTable tbody');
+            tbody.innerHTML = '';
+            let grandTotal = 0;
+            cart.forEach((item, idx) => {
+                grandTotal += item.subtotal;
+                tbody.innerHTML += `<tr>
+                    <td>${item.name}</td>
+                    <td>₦${item.rate.toFixed(2)}</td>
+                    <td>${item.qty}</td>
+                    <td>₦${item.subtotal.toFixed(2)}</td>
+                    <td><button onclick="removeCartItem(${idx})">Remove</button></td>
+                </tr>`;
+            });
+            document.getElementById('grandTotal').textContent = grandTotal.toFixed(2);
+        }
+
+        // Print Receipt
+        function printReceipt() {
+            if(cart.length === 0) return alert('No items in cart!');
+            let now = new Date();
+            let receipt = `<h4>Supermarket Receipt</h4>
+                <div>Date: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</div>
+                <table style="width:100%;margin:10px 0;">
+                    <tr><th>Item</th><th>Rate</th><th>Qty</th><th>Subtotal</th></tr>`;
+            let grandTotal = 0;
+            cart.forEach(item => {
+                receipt += `<tr>
+                    <td>${item.name}</td>
+                    <td>₦${item.rate.toFixed(2)}</td>
+                    <td>${item.qty}</td>
+                    <td>₦${item.subtotal.toFixed(2)}</td>
+                </tr>`;
+                grandTotal += item.subtotal;
+
+                // Deduct sold quantity from inventory
+                let invItem = inventory.find(i => i.name === item.name);
+                let qtyToDeduct = item.qty;
+                for(let entry of invItem.entries) {
+                    let available = entry.qtyIn - entry.qtyOut;
+                    if(available >= qtyToDeduct) {
+                        entry.qtyOut += qtyToDeduct;
+                        break;
+                    } else if(available > 0) {
+                        qtyToDeduct -= available;
+                        entry.qtyOut += available;
+                    }
+                }
+            });
+            receipt += `</table>
+                <div><strong>Grand Total: ₦${grandTotal.toFixed(2)}</strong></div>
+                <div>Thank you for shopping!</div>`;
+            document.getElementById('receipt').innerHTML = receipt;
+            document.getElementById('receipt').style.display = 'block';
+            // Clear cart
+            cart = [];
+            updateCartTable();
+            updateStockTables();
+        }
+
+        // Initial call
+        updateStockTables();
+    </script>
+</body>
+</html>
