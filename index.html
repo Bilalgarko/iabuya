@@ -15,7 +15,7 @@
         .share-section { margin-top: 10px; }
         .share-link, .share-copy { margin-right: 10px; }
         .receipt-actions button { margin-right: 5px; }
-        #loginBox { max-width: 350px; margin: 60px auto; padding: 30px; border: 1px solid #aaa; border-radius: 10px; background: #f9f9f9;}
+        #loginBox, #registerBox { max-width: 350px; margin: 60px auto; padding: 30px; border: 1px solid #aaa; border-radius: 10px; background: #f9f9f9;}
         #mainApp { display: none; }
         .logout-btn { float: right; margin-top: 10px; }
         @media print {
@@ -26,6 +26,19 @@
     </style>
 </head>
 <body>
+    <div id="registerBox" style="display:none;">
+        <h2>Create Profile</h2>
+        <form id="registerForm">
+            <label>Choose Username: <input type="text" id="regUsername" required></label><br>
+            <label>Choose Password: <input type="password" id="regPassword" required></label><br>
+            <button type="submit">Register</button>
+        </form>
+        <div id="registerMsg" style="color:red;margin-top:10px;"></div>
+        <div style="margin-top:15px;">
+            Already have an account? <a href="#" onclick="showLogin()">Login</a>
+        </div>
+    </div>
+
     <div id="loginBox">
         <h2>Login</h2>
         <form id="loginForm">
@@ -34,6 +47,9 @@
             <button type="submit">Login</button>
         </form>
         <div id="loginMsg" style="color:red;margin-top:10px;"></div>
+        <div style="margin-top:15px;">
+            Don't have an account? <a href="#" onclick="showRegister()">Create Profile</a>
+        </div>
     </div>
 
     <div id="mainApp">
@@ -122,43 +138,67 @@
     </div>
 
     <script>
-        // Simple credentials for demo (replace with your own secure method!)
-        const DEMO_USER = 'admin';
-        const DEMO_PASS = '12345';
-
+        // --- Registration/Login Logic ---
+        function showRegister() {
+            document.getElementById('loginBox').style.display = 'none';
+            document.getElementById('registerBox').style.display = 'block';
+            document.getElementById('registerMsg').textContent = '';
+        }
+        function showLogin() {
+            document.getElementById('registerBox').style.display = 'none';
+            document.getElementById('loginBox').style.display = 'block';
+            document.getElementById('loginMsg').textContent = '';
+        }
         function logout() {
-            localStorage.removeItem('loggedIn');
+            localStorage.removeItem('loggedInUser');
             location.reload();
         }
-
-        // Login logic
+        // Registration
+        document.getElementById('registerForm').onsubmit = function(e) {
+            e.preventDefault();
+            let username = document.getElementById('regUsername').value.trim();
+            let password = document.getElementById('regPassword').value;
+            if(username.length < 3 || password.length < 3) {
+                document.getElementById('registerMsg').textContent = 'Username and password must be at least 3 characters.';
+                return;
+            }
+            let users = JSON.parse(localStorage.getItem('supermarketUsers') || "{}");
+            if(users[username]) {
+                document.getElementById('registerMsg').textContent = 'Username already exists.';
+                return;
+            }
+            users[username] = password;
+            localStorage.setItem('supermarketUsers', JSON.stringify(users));
+            localStorage.setItem('loggedInUser', username);
+            document.getElementById('registerBox').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+        };
+        // Login
         document.getElementById('loginForm').onsubmit = function(e) {
             e.preventDefault();
-            let u = document.getElementById('loginUsername').value.trim();
-            let p = document.getElementById('loginPassword').value;
-            if(u === DEMO_USER && p === DEMO_PASS) {
-                localStorage.setItem('loggedIn', 'yes');
+            let username = document.getElementById('loginUsername').value.trim();
+            let password = document.getElementById('loginPassword').value;
+            let users = JSON.parse(localStorage.getItem('supermarketUsers') || "{}");
+            if(users[username] && users[username] === password) {
+                localStorage.setItem('loggedInUser', username);
                 document.getElementById('loginBox').style.display = 'none';
                 document.getElementById('mainApp').style.display = 'block';
             } else {
                 document.getElementById('loginMsg').textContent = 'Invalid username or password!';
             }
         };
-
         // Show main app if logged in
-        if(localStorage.getItem('loggedIn') === 'yes') {
+        if(localStorage.getItem('loggedInUser')) {
             document.getElementById('loginBox').style.display = 'none';
+            document.getElementById('registerBox').style.display = 'none';
             document.getElementById('mainApp').style.display = 'block';
         }
 
-        // Inventory data
+        // --- Supermarket App Logic ---
         let inventory = [];
-        // Sales cart
         let cart = [];
-        // Last receipt object for sharing/saving
         let lastReceipt = null;
 
-        // Add stock
         document.getElementById('addItemForm').onsubmit = function(e) {
             e.preventDefault();
             let name = document.getElementById('itemName').value.trim();
@@ -179,7 +219,6 @@
             document.getElementById('addItemForm').reset();
         };
 
-        // Remove stock (sold/lost/damaged)
         document.getElementById('removeItemForm').onsubmit = function(e) {
             e.preventDefault();
             let name = document.getElementById('itemOutName').value;
@@ -226,7 +265,6 @@
             }
         }
 
-        // Add item to sale cart
         function addSaleItem() {
             let name = document.getElementById('saleItem').value;
             let rate = parseFloat(document.getElementById('saleRate').value);
@@ -238,12 +276,10 @@
                 alert('Not enough stock available!');
                 return;
             }
-
             cart.push({name, rate, qty, subtotal: rate * qty});
             updateCartTable();
         }
 
-        // Remove item from cart
         function removeCartItem(idx) {
             cart.splice(idx, 1);
             updateCartTable();
@@ -266,7 +302,6 @@
             document.getElementById('grandTotal').textContent = grandTotal.toFixed(2);
         }
 
-        // Print Receipt
         function printReceipt() {
             if(cart.length === 0) return alert('No items in cart!');
             let now = new Date();
@@ -316,11 +351,9 @@
             updateCartTable();
             updateStockTables();
 
-            // Prepare receipt for PDF printing
             document.getElementById('pdfArea').innerHTML = receipt;
         }
 
-        // Save Receipt to localStorage
         function saveReceipt() {
             if (!lastReceipt) return;
             let receipts = JSON.parse(localStorage.getItem('supermarketReceipts') || "[]");
@@ -434,9 +467,7 @@
             }
         }
 
-        // PDF Download feature
         function downloadPDF() {
-            // Use browser print to PDF
             let pdfArea = document.getElementById('pdfArea');
             if(pdfArea.innerHTML.trim() === "") {
                 alert("Please generate a receipt first!");
